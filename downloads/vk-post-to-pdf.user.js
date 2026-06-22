@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Post to PDF
 // @namespace    Powered by SelfCode
-// @version      1.0.0
+// @version      1.0.1
 // @description  Скачивание поста VK в PDF (точный скриншот, многостраничный A4, светлая тема)
 // @author       -
 // @match        https://vk.com/*
@@ -299,8 +299,11 @@
     }
 
     function injectInlineButton(post) {
-        if (post.querySelector('.vd-pdf-btn-inline')) return;
-        // ставим в заголовок поста, если есть actions-зона
+        if (post.dataset.vdPdfInjected === '1') return;
+        if (post.querySelector(':scope > .vd-pdf-btn-inline, :scope .vd-pdf-btn-inline')) {
+            post.dataset.vdPdfInjected = '1';
+            return;
+        }
         const target = post.querySelector('.post_header_info, .PostHeaderTitle, .post_header')
                     || post;
         const btn = document.createElement('button');
@@ -314,6 +317,7 @@
             captureToPdf(post, getPostId(post));
         });
         target.appendChild(btn);
+        post.dataset.vdPdfInjected = '1';
     }
 
     function injectStyle() {
@@ -333,10 +337,14 @@
     }
 
     function scanPosts(root) {
-        const posts = (root.matches && POST_SELECTORS.some(s => root.matches(s)))
+        const initial = (root.matches && POST_SELECTORS.some(s => root.matches(s)))
             ? [root]
-            : (root.querySelectorAll ? root.querySelectorAll(POST_SELECTORS.join(',')) : []);
-        posts.forEach(injectInlineButton);
+            : (root.querySelectorAll ? Array.from(root.querySelectorAll(POST_SELECTORS.join(','))) : []);
+        // отсеиваем вложенные (если один пост содержит другой по селектору — берём только внешний)
+        const filtered = initial.filter((p) => {
+            return !initial.some((other) => other !== p && other.contains(p));
+        });
+        filtered.forEach(injectInlineButton);
     }
 
     function startObserver() {
