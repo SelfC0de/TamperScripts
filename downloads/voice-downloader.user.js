@@ -8,8 +8,8 @@
 // @match        https://vk.ru/*
 // @run-at       document-start
 // @grant        GM_download
-// @updateURL    https://raw.githubusercontent.com/SelfC0de/TamperScripts/main/voice-downloader.user.js
-// @downloadURL  https://raw.githubusercontent.com/SelfC0de/TamperScripts/main/voice-downloader.user.js
+// @updateURL    https://raw.githubusercontent.com/SelfC0de/TamperScripts/main/downloads/voice-downloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/SelfC0de/TamperScripts/main/downloads/voice-downloader.user.js
 // ==/UserScript==
 
 (function () {
