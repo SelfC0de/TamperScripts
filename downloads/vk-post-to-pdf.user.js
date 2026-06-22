@@ -1,21 +1,19 @@
 // ==UserScript==
 // @name         VK Post to PDF
 // @namespace    Powered by SelfCode
-// @version      1.0.1
+// @version      1.0.2
 // @description  Скачивание поста VK в PDF (точный скриншот, многостраничный A4, светлая тема)
 // @author       -
 // @match        https://vk.com/*
 // @match        https://vk.ru/*
-// @run-at       document-idle
+// @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @connect      userapi.com
 // @connect      vkuserphoto.ru
 // @connect      vkuser.net
-// @connect      sun9-*.userapi.com
+// @connect      cdn.jsdelivr.net
 // @connect      *
-// @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
-// @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
 // @updateURL    https://raw.githubusercontent.com/SelfC0de/TamperScripts/main/downloads/vk-post-to-pdf.user.js
 // @downloadURL  https://raw.githubusercontent.com/SelfC0de/TamperScripts/main/downloads/vk-post-to-pdf.user.js
 // ==/UserScript==
@@ -44,6 +42,46 @@
     const MARK = 'vd-pdf-injected';
     const ITEM_CLASS = 'vd-pdf-menuitem';
     const TOAST_CLASS = 'vd-pdf-toast';
+
+    const LIB_URLS = {
+        html2canvas: 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+        jspdf: 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+    };
+
+    let libsPromise = null;
+
+    function fetchScript(url) {
+        return new Promise((resolve, reject) => {
+            try {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: (r) => (r.status >= 200 && r.status < 300) ? resolve(r.responseText) : reject(new Error('HTTP ' + r.status)),
+                    onerror: () => reject(new Error('net')),
+                    ontimeout: () => reject(new Error('timeout'))
+                });
+            } catch (e) { reject(e); }
+        });
+    }
+
+    function evalInPage(code) {
+        // выполняем в неймспейсе скрипта (window уже общий между UserScript и страницей в Tampermonkey)
+        const fn = new Function(code);
+        fn();
+    }
+
+    function ensureLibs() {
+        if (window.html2canvas && (window.jspdf || window.jsPDF)) return Promise.resolve();
+        if (libsPromise) return libsPromise;
+        libsPromise = (async () => {
+            const tasks = [];
+            if (!window.html2canvas) tasks.push(fetchScript(LIB_URLS.html2canvas).then(evalInPage));
+            if (!window.jspdf && !window.jsPDF) tasks.push(fetchScript(LIB_URLS.jspdf).then(evalInPage));
+            await Promise.all(tasks);
+        })();
+        libsPromise.catch(() => { libsPromise = null; });
+        return libsPromise;
+    }
 
     function findPostRoot(el) {
         let cur = el;
@@ -169,6 +207,12 @@
 
     async function captureToPdf(post, postId) {
         showToast('Готовлю PDF…');
+        try {
+            await ensureLibs();
+        } catch (e) {
+            showToast('Не удалось загрузить библиотеки', false);
+            return;
+        }
         await expandPost(post);
 
         const width = Math.max(post.getBoundingClientRect().width, 600);
@@ -365,18 +409,23 @@
         setInterval(() => {
             const dropdown = findActiveDropdown();
             if (dropdown) injectIntoDropdown(dropdown);
-        }, 500);
+        }, 1500);
     }
 
-    function boot() {
+    function deferredBoot() {
         if (window.top !== window.self) return;
         injectStyle();
-        startObserver();
+        // не блокируем рендер: ждём idle / load
+        const start = () => {
+            if (window.requestIdleCallback) {
+                requestIdleCallback(startObserver, { timeout: 3000 });
+            } else {
+                setTimeout(startObserver, 1500);
+            }
+        };
+        if (document.readyState === 'complete') start();
+        else window.addEventListener('load', start, { once: true });
     }
 
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        boot();
-    } else {
-        window.addEventListener('DOMContentLoaded', boot);
-    }
+    deferredBoot();
 })();
